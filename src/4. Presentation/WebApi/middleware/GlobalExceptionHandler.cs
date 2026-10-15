@@ -1,3 +1,0 @@
-namespace WebApi.Middleware;
-
-using ;
