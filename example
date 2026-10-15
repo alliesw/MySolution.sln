@@ -1,0 +1,77 @@
+// Minimal API with EF Core (Single-File Example)
+
+using Microsoft.EntityFrameworkCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// 1. Register database context (in-memory or SQL Server)
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// 2. Add OpenAPI / Swagger support
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// 3. Define Endpoints (Minimal API)
+var todos = app.MapGroup("/api/todos");
+
+todos.MapGet("/", async (AppDbContext db) =>
+    await db.Todos.ToListAsync());
+
+todos.MapGet("/{id:int}", async (int id, AppDbContext db) =>
+    await db.Todos.FindAsync(id) is Todo todo ? Results.Ok(todo) : Results.NotFound());
+
+todos.MapPost("/", async (TodoCreateDto dto, AppDbContext db) =>
+{
+    var todo = new Todo { Title = dto.Title, IsCompleted = false };
+    db.Todos.Add(todo);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/todos/{todo.Id}", todo);
+});
+
+todos.MapPut("/{id:int}", async (int id, TodoUpdateDto dto, AppDbContext db) =>
+{
+    var todo = await db.Todos.FindAsync(id);
+    if (todo is null) return Results.NotFound();
+
+    todo.Title = dto.Title;
+    todo.IsCompleted = dto.IsCompleted;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+todos.MapDelete("/{id:int}", async (int id, AppDbContext db) =>
+{
+    var todo = await db.Todos.FindAsync(id);
+    if (todo is null) return Results.NotFound();
+
+    db.Todos.Remove(todo);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+app.Run();
+
+// Models & DTOs
+public class Todo
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public bool IsCompleted { get; set; }
+}
+
+public record TodoCreateDto(string Title);
+public record TodoUpdateDto(string Title, bool IsCompleted);
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Todo> Todos => Set<Todo>();
+}
